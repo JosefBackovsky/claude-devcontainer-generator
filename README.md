@@ -175,6 +175,66 @@ Ve výchozím stavu kontejner povoluje jen:
 
 Vše ostatní je blokováno přes iptables (kontejner má `NET_ADMIN` capability). Pro plný přístup k internetu použij `--full-internet` — firewall se vůbec nevytvoří.
 
+### Blokování git push pro Claude Code
+
+Pokud chceš aby Claude Code nemohl pushovat do vzdáleného repozitáře (např. při `--dangerously-skip-permissions`), odeber git remote domény z `init-firewall.sh`. Claude běží jako neprivilegovaný uživatel `node` a nemá sudo přístup k iptables — firewall nemůže obejít.
+
+```bash
+# V init-firewall.sh odeber/zakomentuj domény git remote:
+# dev.azure.com
+# ssh.dev.azure.com
+# github.com  (pokud je to tvůj remote)
+```
+
+Claude může normálně commitovat a vytvářet větve — workspace je bind mount z hostu. Ty pak pushuješ z hostitelského stroje:
+
+```bash
+# Na hostu (mimo kontejner)
+cd ~/projects/mujprojekt
+git log     # vidíš commity vytvořené Claudem
+git push    # pushuješ ty
+```
+
+> **Pozn.:** Bez přístupu k git remote nemůže Claude ani `git pull`/`git fetch`. Před zahájením session udělej `git pull` na hostu.
+
+## Přístup k portům (VS Code Remote + Docker Compose)
+
+Při práci přes VS Code Remote SSH + Dev Containers existují **dva typy portů** s různým způsobem přístupu:
+
+### Porty uvnitř devcontaineru (VS Code forwardPorts)
+
+Porty aplikací, které **spouštíš uvnitř devcontaineru** (tvůj backend, frontend atd.). Tyto VS Code umí forwardovat automaticky přes `forwardPorts` v `devcontainer.json`:
+
+```json
+"forwardPorts": [8001, 8002, 4321],
+"portsAttributes": {
+  "8001": { "label": "backend", "onAutoForward": "silent" }
+}
+```
+
+→ Přístup přes **localhost:8001** ve VS Code.
+
+### Porty sibling kontejnerů (přímý přístup přes síť)
+
+Porty ostatních Docker Compose services (databáze, Langfuse, Squid, approval-app atd.) jsou mapované na **Docker hostu**, ne uvnitř devcontaineru. VS Code `forwardPorts` na ně **nefunguje**.
+
+Přístup závisí na síťové konfiguraci:
+
+- **Tailscale / LAN:** `http://<hostname>:<port>` přímo z prohlížeče
+- **SSH tunel:** `ssh -L <port>:localhost:<port> <host>` → `localhost:<port>`
+- **Portainer:** webové UI pro správu kontejnerů na `https://<hostname>:9443`
+
+Příklad — wiki-chatbot na Tailscale:
+
+| Služba | Port | Přístup |
+|--------|------|---------|
+| Langfuse web | 8100 | `http://<tailscale-hostname>:8100` |
+| PostgreSQL | 8132 | `<tailscale-hostname>:8132` |
+| Proxy approval | 8180 | `http://<tailscale-hostname>:8180` |
+| Portainer | 9443 | `https://<tailscale-hostname>:9443` |
+
+> **Pravidlo:** Do `forwardPorts` dávej jen porty které **běží uvnitř devcontaineru**. Porty sibling services tam nedávej — nebudou fungovat.
+
 ## Práce s Claude Code
 
 ### Tmux session
