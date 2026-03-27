@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadStack, loadService, loadServices } from '../src/stack-loader.js';
+import { loadStack, loadAndMergeStacks, loadService, loadServices } from '../src/stack-loader.js';
 
 describe('loadStack', () => {
   it('loads nodejs stack', () => {
@@ -25,6 +25,32 @@ describe('loadStack', () => {
 
   it('throws for unknown stack', () => {
     assert.throws(() => loadStack('nonexistent-stack'), /not found/);
+  });
+});
+
+describe('loadAndMergeStacks', () => {
+  it('single stack returns unchanged', () => {
+    const stack = loadAndMergeStacks(['nodejs']);
+    assert.equal(stack.name, 'nodejs');
+    assert.equal(stack.base_image, 'node:22');
+  });
+
+  it('multi-stack uses first base image', () => {
+    const stack = loadAndMergeStacks(['python', 'nodejs']);
+    assert.equal(stack.name, 'python');
+    assert.equal(stack.base_image, 'python:3.12');
+  });
+
+  it('multi-stack merges vscode extensions', () => {
+    const stack = loadAndMergeStacks(['python', 'nodejs']);
+    assert.ok(stack.vscode_extensions.includes('ms-python.python'));
+    assert.ok(stack.vscode_extensions.includes('orta.vscode-jest'));
+  });
+
+  it('multi-stack deduplicates extensions', () => {
+    const stack = loadAndMergeStacks(['nodejs', 'nodejs']);
+    const unique = [...new Set(stack.vscode_extensions)];
+    assert.equal(stack.vscode_extensions.length, unique.length);
   });
 });
 

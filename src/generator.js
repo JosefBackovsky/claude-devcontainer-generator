@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import ejs from 'ejs';
-import { loadStack, loadServices } from './stack-loader.js';
+import { loadStack, loadAndMergeStacks, loadServices } from './stack-loader.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = join(__dirname, 'templates', 'base');
@@ -75,9 +75,9 @@ function renderTemplate(templateName, context) {
  * Generuje kompletní devcontainer repo do output adresáře.
  */
 export function generate(options) {
-  const { name, repos, multiRepo = false, stack: stackName = 'nodejs', services: selectedServices = [], fullInternet = false, includeCompose = false, localClaude = false, sshPort = 2222, firewallPort = 8180, output } = options;
+  const { name, repos, multiRepo = false, stacks: stackNames = ['nodejs'], services: selectedServices = [], fullInternet = false, includeCompose = false, localClaude = false, sshPort = 2222, firewallPort = 8180, output } = options;
 
-  const stack = loadStack(stackName);
+  const stack = loadAndMergeStacks(stackNames);
   const services = loadServices(selectedServices);
   const serviceVolumes = extractServiceVolumes(services);
 

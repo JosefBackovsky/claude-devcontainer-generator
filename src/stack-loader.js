@@ -36,6 +36,25 @@ export function loadStack(stackName) {
 }
 
 /**
+ * Načte a sloučí více stacků. První stack určuje base_image a name,
+ * vscode_extensions a firewall_domains se sloučí ze všech.
+ */
+export function loadAndMergeStacks(stackNames) {
+  const stacks = stackNames.map(s => loadStack(s));
+  if (stacks.length === 1) return stacks[0];
+
+  const primary = stacks[0];
+  const allExtensions = [...new Set(stacks.flatMap(s => s.vscode_extensions || []))];
+  const allDomains = [...new Set(stacks.flatMap(s => s.firewall_domains || []))];
+
+  return {
+    ...primary,
+    vscode_extensions: allExtensions,
+    firewall_domains: allDomains,
+  };
+}
+
+/**
  * Načte definici služby z YAML souboru.
  */
 export function loadService(serviceName) {

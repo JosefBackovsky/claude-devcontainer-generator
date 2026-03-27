@@ -46,7 +46,7 @@ describe('generate', () => {
     name: 'testproject',
     repos: [{ url: 'git@github.com:test/repo.git', branch: 'main', name: 'repo' }],
     multiRepo: false,
-    stack: 'nodejs',
+    stacks: ['nodejs'],
     services: [],
     output: undefined,
   };
@@ -62,7 +62,7 @@ describe('generate', () => {
       { url: 'https://github.com/org/docbro-fe.git', branch: 'develop', name: 'docbro-fe' },
     ],
     multiRepo: true,
-    stack: 'nodejs',
+    stacks: ['nodejs'],
     services: [],
     output: undefined,
   };
@@ -110,28 +110,28 @@ describe('generate', () => {
   // --- Stacks ---
 
   it('nodejs stack uses node:22 base image', () => {
-    generate(opts({ stack: 'nodejs' }));
+    generate(opts({ stacks: ['nodejs'] }));
     const content = readFileSync(join(outputDir, '.devcontainer', 'Dockerfile'), 'utf-8');
     assert.ok(content.startsWith('FROM node:22'));
     assert.ok(!content.includes('nodesource'));
   });
 
   it('python stack uses python base image and installs Node.js', () => {
-    generate(opts({ stack: 'python' }));
+    generate(opts({ stacks: ['python'] }));
     const content = readFileSync(join(outputDir, '.devcontainer', 'Dockerfile'), 'utf-8');
     assert.ok(content.startsWith('FROM python:3.12'));
     assert.ok(content.includes('nodesource'));
   });
 
   it('dotnet stack uses dotnet base image and installs Node.js', () => {
-    generate(opts({ stack: 'dotnet' }));
+    generate(opts({ stacks: ['dotnet'] }));
     const content = readFileSync(join(outputDir, '.devcontainer', 'Dockerfile'), 'utf-8');
     assert.ok(content.startsWith('FROM mcr.microsoft.com/dotnet/sdk:'));
     assert.ok(content.includes('nodesource'));
   });
 
   it('devcontainer.json has base extensions for any stack', () => {
-    generate(opts({ stack: 'nodejs' }));
+    generate(opts({ stacks: ['nodejs'] }));
     const content = readFileSync(join(outputDir, '.devcontainer', 'devcontainer.json'), 'utf-8');
     const json = JSON.parse(content);
     const ext = json.customizations.vscode.extensions;
@@ -143,14 +143,14 @@ describe('generate', () => {
   });
 
   it('nodejs stack has jest extension', () => {
-    generate(opts({ stack: 'nodejs' }));
+    generate(opts({ stacks: ['nodejs'] }));
     const content = readFileSync(join(outputDir, '.devcontainer', 'devcontainer.json'), 'utf-8');
     const json = JSON.parse(content);
     assert.ok(json.customizations.vscode.extensions.includes('orta.vscode-jest'));
   });
 
   it('python stack has python extension', () => {
-    generate(opts({ stack: 'python' }));
+    generate(opts({ stacks: ['python'] }));
     const content = readFileSync(join(outputDir, '.devcontainer', 'devcontainer.json'), 'utf-8');
     const json = JSON.parse(content);
     assert.ok(json.customizations.vscode.extensions.includes('ms-python.python'));
@@ -645,6 +645,27 @@ describe('generate', () => {
     const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
     assert.ok(content.includes('8222:22'));
     assert.ok(content.includes('8280:8080'));
+  });
+
+  // --- Multi-stack ---
+
+  it('multi-stack merges vscode extensions from all stacks', () => {
+    generate(opts({ stacks: ['python', 'nodejs'] }));
+    const content = readFileSync(join(outputDir, '.devcontainer', 'devcontainer.json'), 'utf-8');
+    const json = JSON.parse(content);
+    const ext = json.customizations.vscode.extensions;
+    // Python extensions
+    assert.ok(ext.includes('ms-python.python'));
+    // Node.js extensions
+    assert.ok(ext.includes('orta.vscode-jest'));
+  });
+
+  it('multi-stack uses first stack base image', () => {
+    generate(opts({ stacks: ['python', 'nodejs'] }));
+    const content = readFileSync(join(outputDir, '.devcontainer', 'Dockerfile'), 'utf-8');
+    assert.ok(content.startsWith('FROM python:3.12'));
+    // Node.js installed via nodesource (because primary is python)
+    assert.ok(content.includes('nodesource'));
   });
 });
 
