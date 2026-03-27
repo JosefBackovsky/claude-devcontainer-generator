@@ -1,16 +1,66 @@
-# DevContainer Generator
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Co to je
 
-CLI nástroj v Node.js, který generuje kompletní devcontainer repozitáře pro zákaznické projekty. Výstupem je samostatné repo `<nazev>-devcontainer`, které se pushne na GitHub.
+CLI nástroj v Node.js, který generuje kompletní devcontainer repozitáře pro zákaznické projekty. Výstupem je samostatné repo `<nazev>-devcontainer`, které žije vedle zákaznického repa — zákaznické repo zůstane čisté (žádný `.devcontainer/`, žádný `.claude/`).
 
-## Proč oddělený devcontainer repo
+## Příkazy
 
-- Vývojář chce vlastní devcontainer s Claude Code, ale nechce přidávat soubory do zákaznického repa
-- Zákaznické repo zůstane čisté — žádný `.devcontainer/`, žádný `.claude/`
-- Každý zákaznický projekt může mít jiný stack
-- Vlastní tooling, poznámky a CLAUDE.md nesdílíme se zákazníkem
-- Při ukončení spolupráce odevzdáme čisté repo
+```bash
+npm install              # instalace závislostí
+npm test                 # spuštění všech testů (node --test)
+node --test test/generator.test.js   # spuštění jednoho test souboru
+node --test --test-name-pattern "postgres" test/generator.test.js  # spuštění konkrétního testu
+
+# Generování devcontaineru
+node src/cli.js \
+  --repo git@github.com:firma/projekt.git \
+  --stack nodejs \
+  --services postgres,redis \
+  --output ~/projects/projekt-devcontainer
+```
+
+## Konvence kódu
+
+- ES modules (`"type": "module"` v package.json)
+- Žádný TypeScript
+- Funkce pojmenované anglicky, komentáře mohou být česky
+- Testy pomocí Node.js test runner (`node --test`) — žádný jest, mocha, ani jiný framework
+- Žádný linter/formatter nakonfigurovaný v projektu
+
+## Architektura
+
+### Průchod dat
+
+```
+CLI argumenty (cli.js)
+  → parsuje Commander, volá generate()
+    → stack-loader.js načte stack YAML + services YAML
+    → generator.js renderuje EJS šablony s kontextem {name, repos, multiRepo, stack, services, ...}
+      → výstup: .devcontainer/ složka s devcontainer.json, docker-compose.yml, Dockerfile, init.sh, [init-firewall.sh, CLAUDE.md]
+```
+
+### Klíčové moduly
+
+- **`src/cli.js`** — vstupní bod, Commander definice, parsování `--services` na pole
+- **`src/generator.js`** — renderuje EJS šablony, zapisuje soubory, vypisuje instrukce po vygenerování
+- **`src/stack-loader.js`** — načítá YAML definice stacků a služeb, validuje povinná pole
+
+### Šablony (`src/templates/`)
+
+EJS šablony v `base/` generují výstupní soubory. Kontext předávaný do šablon:
+
+```js
+{ name, repos, multiRepo, stack, services, serviceVolumes, fullInternet, includeCompose, localClaude, sshPort, firewallPort }
+```
+
+- `stack` — objekt z YAML (name, base_image, tools, vscode_extensions, firewall_domains)
+- `services` — objekt `{ název: definice }` z YAML souborů
+- `serviceVolumes` — extrahované pojmenované volumes ze služeb
+
+Stacky (`stacks/*.yml`) a služby (`services/*.yml`) jsou YAML soubory s pevnou strukturou — stack musí mít `name`, `base_image`, `tools`; služba musí mít `name`, `image`.
 
 ## Architektura generovaného devcontaineru
 
@@ -22,351 +72,60 @@ CLI nástroj v Node.js, který generuje kompletní devcontainer repozitáře pro
   │   ├── devcontainer.json
   │   ├── docker-compose.yml
   │   ├── Dockerfile
-  │   ├── init-firewall.sh       ← iptables pravidla, whitelist domén
+  │   ├── init-firewall.sh       ← iptables + proxy režim (jen bez --full-internet)
+  │   ├── CLAUDE.md              ← proxy instrukce pro Claude (jen bez --full-internet)
   │   └── init.sh                ← naklonuje zákaznické repo pokud neexistuje
-  └── project.yml                ← konfigurace projektu (repo URL, branch, cesty)
+  └── project.yml                ← konfigurace projektu (repo URL, branch)
 ```
 
-Po vygenerování CLI vypíše instrukce: jak spustit kontejner, jak vytvořit `.claude/CLAUDE.md` v projektu, jak přidat `.claude/` do `.gitignore` zákaznického repa.
+### Síťová izolace — Squid proxy režim
 
-### Požadavek: plně funkční Claude Code sandbox
+Bez `--full-internet` se generuje dvouvrstvá izolace:
 
-Generovaný devcontainer MUSÍ být plně funkční prostředí pro Claude Code v bezpečném sandbox režimu, inspirované referenčním Anthropic devcontainerem (https://github.com/anthropics/claude-code/tree/main/.devcontainer). To znamená:
+1. **Squid proxy** (`josefbackovsky/cc-remote-firewall:latest`) — sidecar kontejner, whitelist domén, approval API na portu 8080 (mapovaný na host 8180)
+2. **iptables** (`init-firewall.sh`) — default-deny, povoleny jen Docker interní sítě (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) a Docker DNS (127.0.0.11). Žádné domény — vše jde přes proxy.
 
-#### 1. Dockerfile — bezpečný kontejner s Claude Code
+Devcontainer má nastavené `http_proxy`/`https_proxy` env vars na `http://firewall:3128` a `depends_on` firewall service s healthcheck. Git config má taky proxy. `no_proxy` obsahuje `localhost,127.0.0.1,firewall` + názvy služeb.
 
-Založený na base image podle zvoleného stacku (Node.js, Python, .NET). Obsahuje:
+S `--full-internet`: žádný proxy, žádný firewall, žádné `NET_ADMIN`/`NET_RAW`, žádný `postStartCommand`.
 
-- **Vývojářské nástroje:** git, zsh (s oh-my-zsh a pluginy), tmux (s rozumným výchozím .tmux.conf — historie, myš, status bar), ripgrep, fzf, curl, jq
-- **Node.js:** automaticky doinstalovaný pro non-Node stacky (Python, .NET) — potřeba pro Claude Code
-- **Claude Code:** nainstalovaný globálně přes npm (`npm install -g @anthropic-ai/claude-code`)
-- **Firewall script** (bez `--full-internet`): zkopírovaný do `/usr/local/bin/init-firewall.sh`
-- **Uživatel `node`:** kontejner běží jako neprivilegovaný uživatel, ne root (vytvořen pokud neexistuje)
-- **Sudo bez omezení:** `node ALL=(root) NOPASSWD: ALL` — devcontainer je izolované prostředí, granulární omezování sudo je zbytečné
-- **Git credential isolation:** `credential.helper=store` s persistentním souborem, VS Code credential forwarding je zablokovaný přes settings a remoteEnv
+### Docker Compose služby
 
-#### 2. init-firewall.sh — síťová izolace (volitelná)
+- **`devcontainer`** — hlavní služba (ne `app`), build z Dockerfile, SSH server na portu 22 (mapovaný na `--ssh-port`, default 2222)
+- **`firewall`** — Squid proxy (jen bez `--full-internet`)
+- **Volitelné služby** — postgres, mongo, redis, azurite
 
-Generuje se jen bez `--full-internet` flagu. Iptables firewall s default-deny politikou. Povolené jsou vždy:
+### Volumes
 
-- **Claude API:** `api.anthropic.com`, `statsig.anthropic.com`, `sentry.io`
-- **Package managers:** `registry.npmjs.org`, `registry.yarnpkg.com`, `pypi.org`, `files.pythonhosted.org`, `api.nuget.org`
-- **Git:** `github.com`, `gitlab.com`
-- **DNS a SSH:** vždy povoleny
-- **Vše ostatní:** zablokováno
+| Volume | Mount | Popis |
+|--------|-------|-------|
+| `claude-shared` (external) | `/home/node/.claude` | OAuth tokeny, sdílený across projekty |
+| `<nazev>-commandhistory` | `/commandhistory` | Zsh historie, per-projekt |
+| `firewall-data` | `/data` (ve firewall) | Proxy data (jen bez --full-internet) |
 
-Stack definice může přidat další domény přes `firewall_domains`.
+S `--local-claude`: místo Docker volume pro projekt se mountne `.project-claude/` z devcontainer repa na `/workspace/.claude` (bind mount, commitovatelný do gitu). Přidá `.claude/` do git exclude zákaznického repa.
 
-Firewall se spouští přes `postStartCommand` a kontejner čeká na jeho dokončení (`waitFor: postStartCommand`).
+### Tmux auto-start
 
-Kontejner potřebuje capability `NET_ADMIN` a `NET_RAW` pro iptables.
+`command` v docker-compose spustí SSH server, reinstaluje Claude Code a nastartuje tmux session `claude` s `--dangerously-skip-permissions`. Kontejner drží `sleep infinity`.
 
-S `--full-internet`: firewall se přeskočí, žádné `NET_ADMIN`/`NET_RAW`, žádný `postStartCommand`.
+### CLI flagy
 
-#### 3. devcontainer.json — kompletní konfigurace
-
-```json
-{
-  "dockerComposeFile": "docker-compose.yml",
-  "service": "app",
-  "workspaceFolder": "/workspace",
-  "remoteUser": "node",
-
-  "customizations": {
-    "vscode": {
-      "extensions": ["anthropic.claude-code"],
-      "settings": {
-        "claude-code.enableAutoSkipPermissions": true,
-        "git.terminalAuthentication": false,
-        "dev.containers.gitCredentialHelperConfigLocation": "none"
-      }
-    }
-  },
-
-  "containerEnv": {
-    "NODE_OPTIONS": "--max-old-space-size=4096",
-    "CLAUDE_CONFIG_DIR": "/home/node/.claude",
-    "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
-  },
-
-  "remoteEnv": {
-    "VSCODE_GIT_ASKPASS_MAIN": "",
-    "VSCODE_GIT_ASKPASS_NODE": "",
-    "VSCODE_GIT_ASKPASS_EXTRA_ARGS": "",
-    "VSCODE_GIT_IPC_HANDLE": "",
-    "GIT_ASKPASS": ""
-  },
-
-  "initializeCommand": ".devcontainer/init.sh",
-  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
-  "waitFor": "postStartCommand"
-}
-```
-
-Extensions se rozšiřují podle stacku (Python, .NET apod.).
-
-#### 4. docker-compose.yml — služby a mounty
-
-```yaml
-name: <nazev> # prefix pro všechny kontejnery (mujprojekt-app-1, mujprojekt-db-1...)
-
-services:
-  app:
-    build:
-      context: .devcontainer
-      dockerfile: Dockerfile
-    volumes:
-      - ../mujprojekt:/workspace:cached # zdrojový kód (sourozenec vedle)
-      - claude-credentials:/home/node/.claude # globální Claude (sdílený)
-      - <nazev>-claude-project:/workspace/.claude # projektový Claude config
-      - <nazev>-commandhistory:/commandhistory # bash/zsh historie (per-projekt)
-    command: >
-      bash -c "sudo npm i -g @anthropic-ai/claude-code && tmux new-session -d -s claude 'claude --dangerously-skip-permissions' && sleep infinity"
-    # Pozn.: Při prvním spuštění (bez OAuth credentials ve volume) Claude
-    # čeká na přihlášení. Vývojář se připojí přes "tmux attach -t claude",
-    # dokončí OAuth login, a od té chvíle auto-start funguje.
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    environment:
-      - CLAUDE_CONFIG_DIR=/home/node/.claude
-
-volumes:
-  claude-credentials:
-    external: true # sdílený across projekty, vytvořen jednou
-  <nazev>-claude-project: # per-projekt, vytvořen automaticky
-  <nazev>-commandhistory: # per-projekt, historie příkazů přežije rebuild
-```
-
-Pokud zákaznické repo má vlastní docker-compose (DB, LDAP, Redis...), použije se `--include-compose`:
-
-```yaml
-include:
-  - path: ../mujprojekt/docker-compose.yml
-```
-
-### Tři vrstvy persistentních dat
-
-1. **`claude-credentials`** — globální Docker volume, mountovaný na `/home/node/.claude`. OAuth tokeny, globální nastavení. Sdílený across všemi projekty na stroji. Označen `external: true`, uživatel ho vytvoří jednou (`docker volume create claude-credentials`).
-
-2. **`<nazev>-claude-project`** — per-projekt Docker volume, mountovaný na `/workspace/.claude`. Obsahuje `CLAUDE.md` (Claude Code ho najde jako `.claude/CLAUDE.md` — oficiálně podporované umístění), projektová nastavení a settings. Persistentní přes rebuildy kontejneru. Zákaznické repo žádný `.claude/` adresář nemá — volume ho překryje, takže není potřeba `.gitignore`.
-
-3. **Zdrojový kód** — bind mount zákaznického repa z disku do `/workspace`.
-
-4. **`<nazev>-commandhistory`** — per-projekt bash/zsh historie, přežije rebuild kontejneru.
-
-### --dangerously-skip-permissions
-
-Díky firewallu a izolaci kontejneru je bezpečné spustit Claude Code v tomto režimu. Claude může volně:
-
-- Číst/zapisovat soubory v `/workspace`
-- Spouštět příkazy v kontejneru
-- Instalovat packages
-
-Ale NEMŮŽE:
-
-- Přistoupit k hostitelským souborům mimo mount
-- Komunikovat s internetem mimo whitelist
-- Eskalovat oprávnění
-
-### tmux — vzdálené ovládání Claude Code
-
-Klíčový požadavek: Claude Code se automaticky spustí v tmux session při startu kontejneru. Vývojář se jen připojí.
-
-V `docker-compose.yml` je `command` nastavený tak, že kontejner při startu:
-
-1. Vytvoří tmux session `claude`
-2. V ní spustí `claude --dangerously-skip-permissions`
-3. `sleep infinity` drží kontejner naživu
-
-To umožňuje:
-
-- Odpojit se od kontejneru a Claude dál pracuje
-- Připojit se z jiného stroje (SSH z telefonu, jiný počítač) a vidět co Claude dělá
-- Mít víc terminálů — jeden s Claude v tmux, ostatní volné pro git, testy atd.
-
-Generovaný devcontainer musí zajistit:
-
-1. **tmux je nainstalovaný** v Dockerfile (už je v seznamu nástrojů)
-2. **tmux config** — rozumné výchozí nastavení (historie, myš, status bar)
-3. **Auto-start** — `command` v docker-compose spustí Claude v tmux automaticky
-4. **Instrukce pro vývojáře** — CLI po vygenerování vypíše:
-
-```
-Připojení ke Claude Code:
-  tmux attach -t claude
-
-Odpojení (Claude dál pracuje):
-  Ctrl+B, pak D
-```
-
-Typický workflow:
-
-- Ráno: VS Code → "Reopen in Container" → terminál → `tmux attach -t claude` → Claude už běží
-- Přes den: sledujete/ovládáte Claude, zadáváte úkoly
-- Zavřete VS Code → Claude pracuje dál v tmux
-- Z telefonu: SSH na VM → `docker exec -it <kontejner> bash` → `tmux attach -t claude`
-- Večer: VS Code znovu → terminál → `tmux attach -t claude` → Claude má hotovo
-
-### init.sh — automatický clone
-
-`initializeCommand` spustí `init.sh` na hostu před startem kontejneru. Skript přečte `project.yml` a naklonuje repo jako sourozenecký adresář vedle devcontainer repa (pokud ještě neexistuje).
-
-```yaml
-# project.yml
-repo: git@github.com:neco/mujprojekt.git
-branch: main
-```
-
-Konvence adresářové struktury:
-
-```
-~/projects/
-  ├── mujprojekt-devcontainer/   ← devcontainer repo (tady běží init.sh)
-  └── mujprojekt/                ← zákaznické repo (naklonováno vedle)
-```
-
-`init.sh` odvodí cílovou cestu jako `../<nazev>` (název projektu bez `-devcontainer` suffixu, nebo explicitně z `project.yml`). Volume mount v docker-compose odpovídá: `../mujprojekt:/workspace:cached`.
-
-## Stacky a služby
-
-Stacky (SDK/runtime) a služby jsou oddělené vrstvy, volitelně kombinovatelné.
-
-### Stacky (`src/templates/stacks/`)
-
-YAML soubory definující base image, nástroje a VS Code extensions:
-
-```yaml
-# src/templates/stacks/nodejs.yml
-name: nodejs
-display_name: "Node.js (LTS)"
-base_image: node:22
-tools: [git, zsh, tmux, ripgrep, fzf, curl, jq]
-vscode_extensions:
-  - dbaeumer.vscode-eslint
-firewall_domains: []
-```
-
-Dostupné stacky: `nodejs` (node:22), `python` (python:3.12), `dotnet` (dotnet/sdk:9.0).
-
-### Služby (`src/templates/services/`)
-
-Jednotlivě volitelné přes `--services`:
-
-```yaml
-# src/templates/services/postgres.yml
-name: postgres
-display_name: "PostgreSQL"
-image: postgres:16
-env:
-  POSTGRES_USER: dev
-  POSTGRES_PASSWORD: dev
-  POSTGRES_DB: dev
-ports:
-  - "5432:5432"
-volumes:
-  - pgdata:/var/lib/postgresql/data
-```
-
-Dostupné služby: `postgres`, `mongo`, `redis`, `azurite`.
-
-## Technologie
-
-- **Node.js** — runtime
-- **Commander** — parsování CLI argumentů
-- **EJS** — šablonování souborů (devcontainer.json, Dockerfile, docker-compose.yml, init.sh, init-firewall.sh)
-- **js-yaml** — čtení stack definic a project.yml
-- **Žádné další závislosti** — držet minimální
-
-## Struktura projektu
-
-```
-devcontainer-generator/
-  ├── src/
-  │   ├── cli.js                  ← vstupní bod, Commander definice
-  │   ├── generator.js            ← hlavní logika generování
-  │   ├── stack-loader.js         ← načítání stacků a služeb z YAML
-  │   └── templates/
-  │       ├── base/               ← EJS šablony výstupních souborů
-  │       │   ├── devcontainer.json.ejs
-  │       │   ├── docker-compose.yml.ejs
-  │       │   ├── Dockerfile.ejs
-  │       │   ├── init-firewall.sh.ejs
-  │       │   ├── init.sh.ejs
-  │       │   └── project.yml.ejs
-  │       ├── stacks/             ← SDK/runtime definice
-  │       │   ├── nodejs.yml
-  │       │   ├── python.yml
-  │       │   └── dotnet.yml
-  │       └── services/           ← definice služeb
-  │           ├── postgres.yml
-  │           ├── mongo.yml
-  │           ├── redis.yml
-  │           └── azurite.yml
-  ├── test/
-  │   ├── stack-loader.test.js
-  │   └── generator.test.js
-  ├── package.json
-  ├── CLAUDE.md                   ← tento soubor
-  └── README.md
-```
-
-## Použití
-
-```bash
-node src/cli.js \
-  --repo git@github.com:zakaznik-b/projekt.git \
-  --branch main \
-  --stack nodejs \
-  --services postgres,redis \
-  --output ~/projects/projekt-devcontainer
-```
-
-### Volitelné flagy
-
-- `--full-internet` — přeskočí firewall, plný přístup k internetu
-- `--include-compose` — zahrne zákaznický `docker-compose.yml` přes compose `include`
-
-## Konvence kódu
-
-- ES modules (`"type": "module"` v package.json)
-- Žádný TypeScript — zbytečná komplexita pro tento nástroj
-- Funkce pojmenované anglicky, komentáře mohou být česky
-- Testy pomocí Node.js test runner (`node --test`)
-- Každá šablona musí generovat validní výstup — testovat přes dry-run
-
-## Devcontainer pro tento projekt
-
-Tento projekt sám používá devcontainer (meta!). Jednoduchý setup:
-
-```json
-{
-  "image": "node:22",
-  "features": {
-    "ghcr.io/devcontainers/features/git:1": {},
-    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
-  },
-  "mounts": ["source=claude-credentials,target=/home/node/.claude,type=volume"],
-  "containerEnv": {
-    "CLAUDE_CONFIG_DIR": "/home/node/.claude"
-  },
-  "postCreateCommand": "npm install"
-}
-```
+| Flag | Default | Popis |
+|------|---------|-------|
+| `--repo` (min. 1) | — | Git URL repa (opakovatelný, `url#branch` pro per-repo branch) |
+| `--output` (required) | — | Cílový adresář |
+| `--name` | z repo URL | Název projektu (povinný při multi-repo) |
+| `--branch` | `main` | Git branch (globální default) |
+| `--stack` | `nodejs` | SDK/runtime: `nodejs`, `python`, `dotnet` |
+| `--services` | — | Čárkou oddělené: `postgres`, `mongo`, `redis`, `azurite` |
+| `--full-internet` | `false` | Vypne firewall a proxy |
+| `--include-compose` | `false` | Zahrne zákaznický docker-compose přes compose `include` (jen single-repo) |
+| `--local-claude` | `false` | Bind mount .claude místo Docker volume |
+| `--ssh-port` | `2222` | SSH port pro JetBrains IDE |
+| `--port-prefix` | — | Prefix portů (např. `82` → SSH `8222`, firewall `8280`). Přednost před `--ssh-port` |
 
 ## TODO
 
-- [x] Základní CLI s Commander
-- [x] Načítání stack definic z YAML
-- [x] EJS šablony pro všechny výstupní soubory
-- [x] Generátor — spojí stack + vstupy + šablony → výstupní složka
-- [x] init-firewall.sh šablona s dynamickým whitelistem
-- [x] Dockerfile šablona s nástroji a Claude Code
-- [x] Podpora pro include zákaznického docker-compose (`--include-compose`)
-- [x] Volitelný firewall (`--full-internet`)
-- [x] Oddělené stacky (nodejs, python, dotnet) a služby (postgres, mongo, redis, azurite)
-- [x] Výpis instrukcí po vygenerování
-- [x] Testy (37 testů)
-- [x] Dokumentace (README.md)
 - [ ] Interaktivní režim (inquirer nebo prompts)
 - [ ] Validace vstupů (repo URL format, existence stacku)

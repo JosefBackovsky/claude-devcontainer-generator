@@ -22,6 +22,29 @@ export function nameFromRepo(repoUrl) {
 }
 
 /**
+ * Parsuje repo argument s volitelným #branch suffixem.
+ * "https://github.com/org/repo.git#develop" → { url, branch: "develop", name: "repo" }
+ * "git@github.com:org/repo.git" → { url, branch: defaultBranch, name: "repo" }
+ */
+export function parseRepoArg(repoArg, defaultBranch = 'main') {
+  const hashIndex = repoArg.lastIndexOf('#');
+  let url, branch;
+  if (hashIndex > 0) {
+    url = repoArg.substring(0, hashIndex);
+    branch = repoArg.substring(hashIndex + 1);
+  } else {
+    url = repoArg;
+    branch = defaultBranch;
+  }
+  // Prázdný branch za # (např. "repo.git#") → fallback na default
+  if (!branch) {
+    branch = defaultBranch;
+  }
+  const name = nameFromRepo(url);
+  return { url, branch, name };
+}
+
+/**
  * Extrahuje pojmenované volumes ze služeb (ne bind-mount cesty).
  * Např. "pgdata:/var/lib/postgresql/data" → { pgdata: true }
  */
@@ -52,13 +75,13 @@ function renderTemplate(templateName, context) {
  * Generuje kompletní devcontainer repo do output adresáře.
  */
 export function generate(options) {
-  const { name, repo, branch = 'main', stack: stackName = 'nodejs', services: selectedServices = [], fullInternet = false, includeCompose = false, localClaude = false, sshPort = 2222, output } = options;
+  const { name, repos, multiRepo = false, stack: stackName = 'nodejs', services: selectedServices = [], fullInternet = false, includeCompose = false, localClaude = false, sshPort = 2222, firewallPort = 8180, output } = options;
 
   const stack = loadStack(stackName);
   const services = loadServices(selectedServices);
   const serviceVolumes = extractServiceVolumes(services);
 
-  const context = { name, repo, branch, stack, services, serviceVolumes, fullInternet, includeCompose, localClaude, sshPort };
+  const context = { name, repos, multiRepo, stack, services, serviceVolumes, fullInternet, includeCompose, localClaude, sshPort, firewallPort };
 
   const devcontainerDir = join(output, '.devcontainer');
   mkdirSync(devcontainerDir, { recursive: true });
@@ -90,13 +113,33 @@ export function generate(options) {
 /**
  * Vypíše instrukce po vygenerování.
  */
-export function printInstructions(name, output, { localClaude = false, sshPort = 2222 } = {}) {
+export function printInstructions(name, output, { localClaude = false, sshPort = 2222, repos = [], multiRepo = false, includeCompose = false } = {}) {
   let claudeInfo = '';
   if (localClaude) {
     claudeInfo = `
 6. Projektové Claude nastavení (.claude/CLAUDE.md) jsou v .project-claude/
    složce tohoto devcontainer repa — commitujte je do gitu.
    .claude/ je automaticky přidán do git exclude zákaznického repa.
+`;
+  }
+
+  let multiRepoInfo = '';
+  if (multiRepo && repos.length > 0) {
+    const repoList = repos.map(r => `  /workspace/${r.name}/`).join('\n');
+    multiRepoInfo = `
+Workspace obsahuje ${repos.length} repozitáře:
+${repoList}
+`;
+  }
+
+  let includeComposeWarning = '';
+  if (includeCompose && multiRepo) {
+    const composePaths = repos.map(r => `    ../../${name}/${r.name}/docker-compose.yml`).join('\n');
+    includeComposeWarning = `
+⚠ Více repozitářů — docker-compose soubory zákaznických repozitářů
+  nebyly automaticky includovány. Zkontrolujte compose soubory v:
+${composePaths}
+  a ručně upravte .devcontainer/docker-compose.yml pokud potřebujete.
 `;
   }
 
@@ -122,7 +165,7 @@ export function printInstructions(name, output, { localClaude = false, sshPort =
 5. Nastavení git credentials (při prvním použití):
    echo "https://<github-user>:<PAT>@github.com" > ~/.git-credentials
    (nebo nechte git se zeptat při prvním push/pull — uloží automaticky)
-${claudeInfo}
+${claudeInfo}${multiRepoInfo}${includeComposeWarning}
 ${jetbrainsStep}. JetBrains IDE (PyCharm, IntelliJ, ...) — přes Gateway:
    - Kontejner exposuje SSH na portu ${sshPort} (mapovaný z kontejneru :22)
    - PyCharm Gateway → SSH na <hostname>:${sshPort}, user: node, bez hesla

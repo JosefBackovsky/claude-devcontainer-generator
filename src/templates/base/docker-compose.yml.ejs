@@ -1,5 +1,5 @@
 name: <%= name %>
-<%_ if (includeCompose) { _%>
+<%_ if (includeCompose && !multiRepo) { _%>
 
 include:
   - path: ../../<%= name %>/docker-compose.yml
@@ -11,7 +11,13 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
+<%_ if (multiRepo) { _%>
+<%_ for (const r of repos) { _%>
+      - ../../<%= name %>/<%= r.name %>:/workspace/<%= r.name %>:cached
+<%_ } _%>
+<%_ } else { _%>
       - ../../<%= name %>:/workspace:cached
+<%_ } _%>
       - claude-shared:/home/node/.claude
 <%_ if (localClaude) { _%>
       - ../../<%= name %>-devcontainer/.project-claude:/workspace/.claude:cached
@@ -44,7 +50,7 @@ services:
   firewall:
     image: josefbackovsky/cc-remote-firewall:latest
     ports:
-      - "8180:8080"
+      - "<%= firewallPort %>:8080"
     volumes:
       - firewall-data:/data
 <%_ if ((stack.firewall_domains || []).length > 0) { _%>
