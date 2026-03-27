@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, chmodSync } from 'node:fs';
+import { mkdirSync, writeFileSync, chmodSync, existsSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -107,6 +107,16 @@ export function generate(options) {
     if (file.executable) {
       chmodSync(file.output, 0o755);
     }
+  }
+
+  // Statické soubory
+  const gitignorePath = join(output, '.gitignore');
+  if (!existsSync(gitignorePath)) {
+    writeFileSync(gitignorePath, '.env\n');
+  }
+  const envExamplePath = join(devcontainerDir, '.env.example');
+  if (!existsSync(envExamplePath)) {
+    writeFileSync(envExamplePath, '# Environment variables for this devcontainer\n# Copy to .env and fill in values:\n#   cp .devcontainer/.env.example .devcontainer/.env\n');
   }
 }
 

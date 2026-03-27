@@ -32,6 +32,9 @@ services:
       - NET_ADMIN
       - NET_RAW
 <%_ } _%>
+    env_file:
+      - path: .env
+        required: false
     environment:
       - CLAUDE_CONFIG_DIR=/home/node/.claude
 <%_ if (!fullInternet) { _%>
