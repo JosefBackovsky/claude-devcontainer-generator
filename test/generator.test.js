@@ -145,14 +145,14 @@ describe('generate', () => {
   it('no services when none selected', () => {
     generate(opts({ services: [] }));
     const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
-    assert.ok(!content.includes('postgres:16'));
+    assert.ok(!content.includes('postgres:17'));
     assert.ok(!content.includes('redis:7'));
   });
 
   it('postgres service included when selected', () => {
     generate(opts({ services: ['postgres'] }));
     const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
-    assert.ok(content.includes('postgres:16'));
+    assert.ok(content.includes('postgres:17'));
     assert.ok(content.includes('pgdata:'));
   });
 
@@ -179,7 +179,7 @@ describe('generate', () => {
   it('multiple services can be combined', () => {
     generate(opts({ services: ['postgres', 'redis', 'azurite'] }));
     const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
-    assert.ok(content.includes('postgres:16'));
+    assert.ok(content.includes('postgres:17'));
     assert.ok(content.includes('redis:7'));
     assert.ok(content.includes('azurite'));
   });
@@ -208,14 +208,17 @@ describe('generate', () => {
 
   // --- Firewall ---
 
-  it('firewall script contains base domains and package managers', () => {
+  it('init-firewall.sh uses proxy-mode (no domain names, allows Docker networks)', () => {
     generate(opts());
     const content = readFileSync(join(outputDir, '.devcontainer', 'init-firewall.sh'), 'utf-8');
-    assert.ok(content.includes('api.anthropic.com'));
-    assert.ok(content.includes('github.com'));
-    assert.ok(content.includes('registry.npmjs.org'));
-    assert.ok(content.includes('pypi.org'));
-    assert.ok(content.includes('api.nuget.org'));
+    // Proxy-mode: allows Docker internal networks, blocks everything else
+    assert.ok(content.includes('10.0.0.0/8'));
+    assert.ok(content.includes('172.16.0.0/12'));
+    assert.ok(content.includes('192.168.0.0/16'));
+    assert.ok(content.includes('127.0.0.11'));
+    // Should NOT contain domain names (proxy handles that)
+    assert.ok(!content.includes('api.anthropic.com'));
+    assert.ok(!content.includes('registry.npmjs.org'));
   });
 
   // --- Full internet mode ---
@@ -397,6 +400,26 @@ describe('generate', () => {
     assert.ok(content.includes("credential.helper 'store --file /home/node/.git-credentials'"));
   });
 
+  it('git proxy config in Dockerfile when not fullInternet', () => {
+    generate(opts());
+    const content = readFileSync(join(outputDir, '.devcontainer', 'Dockerfile'), 'utf-8');
+    assert.ok(content.includes('http.proxy http://firewall:3128'));
+    assert.ok(content.includes('https.proxy http://firewall:3128'));
+  });
+
+  it('no git proxy config when fullInternet', () => {
+    generate(opts({ fullInternet: true }));
+    const content = readFileSync(join(outputDir, '.devcontainer', 'Dockerfile'), 'utf-8');
+    assert.ok(!content.includes('http.proxy'));
+    assert.ok(content.includes('credential.helper'));
+  });
+
+  it('dnsutils NOT in Dockerfile', () => {
+    generate(opts());
+    const content = readFileSync(join(outputDir, '.devcontainer', 'Dockerfile'), 'utf-8');
+    assert.ok(!content.includes('dnsutils'));
+  });
+
   // --- Include compose ---
 
   it('no include section by default', () => {
@@ -410,6 +433,93 @@ describe('generate', () => {
     const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
     assert.ok(content.includes('include:'));
     assert.ok(content.includes('../../testproject/docker-compose.yml'));
+  });
+
+  // --- Firewall proxy service ---
+
+  it('firewall service in docker-compose when not fullInternet', () => {
+    generate(opts());
+    const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
+    assert.ok(content.includes('firewall:'));
+    assert.ok(content.includes('josefbackovsky/cc-remote-firewall:latest'));
+    assert.ok(content.includes('firewall-data:/data'));
+    assert.ok(content.includes('8180:8080'));
+  });
+
+  it('firewall service NOT in docker-compose when fullInternet', () => {
+    generate(opts({ fullInternet: true }));
+    const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
+    assert.ok(!content.includes('cc-remote-firewall'));
+    assert.ok(!content.includes('firewall-data'));
+  });
+
+  it('proxy env vars in devcontainer when not fullInternet', () => {
+    generate(opts());
+    const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
+    assert.ok(content.includes('http_proxy=http://firewall:3128'));
+    assert.ok(content.includes('https_proxy=http://firewall:3128'));
+    assert.ok(content.includes('HTTP_PROXY=http://firewall:3128'));
+    assert.ok(content.includes('HTTPS_PROXY=http://firewall:3128'));
+  });
+
+  it('no_proxy contains firewall service name', () => {
+    generate(opts());
+    const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
+    assert.ok(content.includes('no_proxy=localhost,127.0.0.1,firewall'));
+  });
+
+  it('no_proxy includes service names', () => {
+    generate(opts({ services: ['postgres', 'redis'] }));
+    const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
+    assert.ok(content.includes('no_proxy=localhost,127.0.0.1,firewall,postgres,redis'));
+  });
+
+  it('no proxy env vars when fullInternet', () => {
+    generate(opts({ fullInternet: true }));
+    const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
+    assert.ok(!content.includes('http_proxy'));
+    assert.ok(!content.includes('https_proxy'));
+  });
+
+  it('devcontainer depends_on firewall when not fullInternet', () => {
+    generate(opts());
+    const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
+    assert.ok(content.includes('depends_on:'));
+    assert.ok(content.includes('condition: service_healthy'));
+  });
+
+  it('firewall-data volume in volumes section', () => {
+    generate(opts());
+    const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
+    assert.ok(content.includes('firewall-data:'));
+  });
+
+  it('firewall healthcheck defined', () => {
+    generate(opts());
+    const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
+    assert.ok(content.includes('healthcheck:'));
+    assert.ok(content.includes('start_period:'));
+  });
+
+  it('EXTRA_DOMAINS not set when stack has no firewall_domains', () => {
+    generate(opts());
+    const content = readFileSync(join(outputDir, '.devcontainer', 'docker-compose.yml'), 'utf-8');
+    assert.ok(!content.includes('EXTRA_DOMAINS'));
+  });
+
+  // --- CLAUDE.md ---
+
+  it('CLAUDE.md generated with proxy instructions when not fullInternet', () => {
+    generate(opts());
+    const content = readFileSync(join(outputDir, '.devcontainer', 'CLAUDE.md'), 'utf-8');
+    assert.ok(content.includes('Proxy & Firewall Instructions'));
+    assert.ok(content.includes('firewall:8080'));
+    assert.ok(content.includes('/api/request'));
+  });
+
+  it('CLAUDE.md NOT generated when fullInternet', () => {
+    generate(opts({ fullInternet: true }));
+    assert.ok(!existsSync(join(outputDir, '.devcontainer', 'CLAUDE.md')));
   });
 });
 

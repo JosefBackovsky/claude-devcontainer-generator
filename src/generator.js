@@ -72,6 +72,7 @@ export function generate(options) {
     { template: 'project.yml.ejs', output: join(output, 'project.yml') },
     { template: 'init.sh.ejs', output: join(devcontainerDir, 'init.sh'), executable: true },
     ...(!fullInternet ? [{ template: 'init-firewall.sh.ejs', output: join(devcontainerDir, 'init-firewall.sh'), executable: true }] : []),
+    ...(!fullInternet ? [{ template: 'CLAUDE.md.ejs', output: join(devcontainerDir, 'CLAUDE.md') }] : []),
     { template: 'Dockerfile.ejs', output: join(devcontainerDir, 'Dockerfile') },
     { template: 'docker-compose.yml.ejs', output: join(devcontainerDir, 'docker-compose.yml') },
     { template: 'devcontainer.json.ejs', output: join(devcontainerDir, 'devcontainer.json') },

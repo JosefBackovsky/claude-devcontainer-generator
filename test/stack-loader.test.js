@@ -32,7 +32,7 @@ describe('loadService', () => {
   it('loads postgres service', () => {
     const svc = loadService('postgres');
     assert.equal(svc.name, 'postgres');
-    assert.equal(svc.image, 'postgres:16');
+    assert.equal(svc.image, 'postgres:17');
     assert.ok(svc.env.POSTGRES_USER);
   });
 

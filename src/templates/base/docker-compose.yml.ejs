@@ -28,6 +28,37 @@ services:
 <%_ } _%>
     environment:
       - CLAUDE_CONFIG_DIR=/home/node/.claude
+<%_ if (!fullInternet) { _%>
+      - http_proxy=http://firewall:3128
+      - https_proxy=http://firewall:3128
+      - HTTP_PROXY=http://firewall:3128
+      - HTTPS_PROXY=http://firewall:3128
+      - no_proxy=localhost,127.0.0.1,firewall<%= Object.keys(services).length ? ',' + Object.keys(services).join(',') : '' %>
+      - NO_PROXY=localhost,127.0.0.1,firewall<%= Object.keys(services).length ? ',' + Object.keys(services).join(',') : '' %>
+    depends_on:
+      firewall:
+        condition: service_healthy
+<%_ } _%>
+<%_ if (!fullInternet) { _%>
+
+  firewall:
+    image: josefbackovsky/cc-remote-firewall:latest
+    ports:
+      - "8180:8080"
+    volumes:
+      - firewall-data:/data
+<%_ if ((stack.firewall_domains || []).length > 0) { _%>
+    environment:
+      - EXTRA_DOMAINS=<%= stack.firewall_domains.join(',') %>
+<%_ } _%>
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/3128' && curl -sf http://localhost:8080/api/whitelist > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+<%_ } _%>
 <%_ for (const [svcName, svc] of Object.entries(services)) { _%>
 
   <%= svcName %>:
@@ -56,6 +87,9 @@ volumes:
   claude-shared:
     external: true
   <%= name %>-commandhistory:
+<%_ if (!fullInternet) { _%>
+  firewall-data:
+<%_ } _%>
 <%_ for (const volName of Object.keys(serviceVolumes)) { _%>
   <%= volName %>:
 <%_ } _%>

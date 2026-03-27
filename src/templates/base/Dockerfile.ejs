@@ -13,7 +13,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-server \
 <%_ if (!fullInternet) { _%>
     iptables \
-    dnsutils \
 <%_ } _%>
     && rm -rf /var/lib/apt/lists/*
 
@@ -77,4 +76,10 @@ RUN chmod +x /usr/local/bin/init-firewall.sh
 
 WORKDIR /workspace
 USER node
+<%_ if (!fullInternet) { _%>
+RUN git config --global credential.helper 'store --file /home/node/.git-credentials' \
+    && git config --global http.proxy http://firewall:3128 \
+    && git config --global https.proxy http://firewall:3128
+<%_ } else { _%>
 RUN git config --global credential.helper 'store --file /home/node/.git-credentials'
+<%_ } _%>

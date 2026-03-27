@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Configuring firewall..."
+echo "Configuring firewall (proxy mode)..."
 
 # Flush existing rules
 iptables -F OUTPUT
@@ -15,47 +15,16 @@ iptables -A INPUT -i lo -j ACCEPT
 iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
-# Allow DNS (UDP and TCP port 53)
-iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
-iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
+# Allow Docker embedded DNS only
+iptables -A OUTPUT -d 127.0.0.11 -p udp --dport 53 -j ACCEPT
+iptables -A OUTPUT -d 127.0.0.11 -p tcp --dport 53 -j ACCEPT
 
-# Allow SSH (port 22)
-iptables -A OUTPUT -p tcp --dport 22 -j ACCEPT
+# Allow Docker internal networks (proxy, services...)
+iptables -A OUTPUT -d 10.0.0.0/8 -j ACCEPT
+iptables -A OUTPUT -d 172.16.0.0/12 -j ACCEPT
+iptables -A OUTPUT -d 192.168.0.0/16 -j ACCEPT
 
-# Whitelist domains
-DOMAINS=(
-  # Claude API
-  api.anthropic.com
-  statsig.anthropic.com
-  sentry.io
-  # Git
-  github.com
-  gitlab.com
-  # Package managers (always included)
-  registry.npmjs.org
-  registry.yarnpkg.com
-  pypi.org
-  files.pythonhosted.org
-  api.nuget.org
-<%_ for (const domain of stack.firewall_domains || []) { _%>
-  <%= domain %>
-<%_ } _%>
-)
-
-for DOMAIN in "${DOMAINS[@]}"; do
-  # Resolve domain to IPs (handles CNAMEs)
-  IPS=$(dig +short "$DOMAIN" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || true)
-  if [ -z "$IPS" ]; then
-    echo "Warning: Could not resolve $DOMAIN"
-    continue
-  fi
-  for IP in $IPS; do
-    iptables -A OUTPUT -d "$IP" -j ACCEPT
-  done
-  echo "Allowed: $DOMAIN"
-done
-
-# Default deny OUTPUT
+# Block everything else — forces HTTP/HTTPS through proxy
 iptables -A OUTPUT -j DROP
 
-echo "Firewall configured. Only whitelisted domains are accessible."
+echo "Firewall configured. All HTTP/HTTPS traffic routed through proxy."
