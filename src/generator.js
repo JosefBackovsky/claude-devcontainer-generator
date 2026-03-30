@@ -75,13 +75,13 @@ function renderTemplate(templateName, context) {
  * Generuje kompletní devcontainer repo do output adresáře.
  */
 export function generate(options) {
-  const { name, repos, multiRepo = false, stacks: stackNames = ['nodejs'], services: selectedServices = [], fullInternet = false, includeCompose = false, localClaude = false, sshPort = 2222, firewallPort = 8180, output } = options;
+  const { name, repos, multiRepo = false, stacks: stackNames = ['nodejs'], services: selectedServices = [], fullInternet = false, includeCompose = false, localClaude = false, sshPort = 2222, firewallPort = 8180, gitName, gitEmail, output } = options;
 
   const stack = loadAndMergeStacks(stackNames);
   const services = loadServices(selectedServices);
   const serviceVolumes = extractServiceVolumes(services);
 
-  const context = { name, repos, multiRepo, stack, services, serviceVolumes, fullInternet, includeCompose, localClaude, sshPort, firewallPort };
+  const context = { name, repos, multiRepo, stack, services, serviceVolumes, fullInternet, includeCompose, localClaude, sshPort, firewallPort, gitName, gitEmail };
 
   const devcontainerDir = join(output, '.devcontainer');
   mkdirSync(devcontainerDir, { recursive: true });

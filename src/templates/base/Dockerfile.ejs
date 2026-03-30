@@ -50,14 +50,18 @@ RUN mkdir -p /commandhistory && chown node:node /commandhistory
 USER node
 RUN echo 'export HISTFILE=/commandhistory/.zsh_history' >> ~/.zshrc \
     && echo 'export HISTSIZE=10000' >> ~/.zshrc \
-    && echo 'export SAVEHIST=10000' >> ~/.zshrc
+    && echo 'export SAVEHIST=10000' >> ~/.zshrc \
+    && echo '[ -f ~/.container-env ] && source ~/.container-env' >> ~/.zshrc
 
-# Install Claude Code globally
-USER root
-RUN npm install -g @anthropic-ai/claude-code
+# Install Claude Code (native installer)
+USER node
+RUN mkdir /tmp/claude-install && cd /tmp/claude-install \
+    && curl -fsSL https://claude.ai/install.sh | bash \
+    && rm -rf /tmp/claude-install
 
-# Pre-create .claude dir so empty volume inherits correct ownership
-RUN mkdir -p /home/node/.claude && chown node:node /home/node/.claude
+# Pre-create dirs so empty volumes inherit correct ownership
+RUN mkdir -p /home/node/.claude /home/node/.vscode-server \
+    && chown node:node /home/node/.claude /home/node/.vscode-server
 
 # SSH server for JetBrains IDE access
 RUN mkdir -p /run/sshd \
@@ -79,7 +83,13 @@ USER node
 <%_ if (!fullInternet) { _%>
 RUN git config --global credential.helper 'store --file /home/node/.git-credentials' \
     && git config --global http.proxy http://firewall:3128 \
-    && git config --global https.proxy http://firewall:3128
+    && git config --global https.proxy http://firewall:3128<%_ if (gitName) { _%> \
+    && git config --global user.name '<%= gitName %>'<%_ } _%><%_ if (gitEmail) { _%> \
+    && git config --global user.email '<%= gitEmail %>'<%_ } _%>
+
 <%_ } else { _%>
-RUN git config --global credential.helper 'store --file /home/node/.git-credentials'
+RUN git config --global credential.helper 'store --file /home/node/.git-credentials'<%_ if (gitName) { _%> \
+    && git config --global user.name '<%= gitName %>'<%_ } _%><%_ if (gitEmail) { _%> \
+    && git config --global user.email '<%= gitEmail %>'<%_ } _%>
+
 <%_ } _%>

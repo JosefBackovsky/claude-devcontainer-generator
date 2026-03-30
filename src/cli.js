@@ -18,6 +18,8 @@ program
   .option('--local-claude', 'Mount .claude from devcontainer repo instead of Docker volume')
   .option('--ssh-port <port>', 'SSH port for JetBrains IDE access (default: 2222)')
   .option('--port-prefix <prefix>', 'Port prefix for all exposed ports (e.g. 82 → SSH 8222, firewall 8280)')
+  .option('--git-name <name>', 'Git user.name for commits')
+  .option('--git-email <email>', 'Git user.email for commits')
   .requiredOption('--output <path>', 'Output directory path')
   .action((options) => {
     try {

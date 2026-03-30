@@ -19,6 +19,7 @@ services:
       - ../../<%= name %>:/workspace:cached
 <%_ } _%>
       - claude-shared:/home/node/.claude
+      - <%= name %>-vscode-server:/home/node/.vscode-server
 <%_ if (localClaude) { _%>
       - ../../<%= name %>-devcontainer/.project-claude:/workspace/.claude:cached
 <%_ } _%>
@@ -26,7 +27,8 @@ services:
     ports:
       - "<%= sshPort %>:22"
     command: >
-      bash -c "sudo /usr/sbin/sshd && sudo npm i -g @anthropic-ai/claude-code && tmux new-session -d -s claude 'claude --dangerously-skip-permissions' && sleep infinity"
+      bash -c "export -p > /home/node/.container-env && sudo /usr/sbin/sshd && claude update --yes 2>/dev/null; tmux new-session -d -s claude 'claude --dangerously-skip-permissions' && sleep infinity"
+    restart: always
 <%_ if (!fullInternet) { _%>
     cap_add:
       - NET_ADMIN
@@ -95,6 +97,7 @@ services:
 volumes:
   claude-shared:
     external: true
+  <%= name %>-vscode-server:
   <%= name %>-commandhistory:
 <%_ if (!fullInternet) { _%>
   firewall-data:
