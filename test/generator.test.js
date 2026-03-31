@@ -113,21 +113,18 @@ describe('generate', () => {
     generate(opts({ stacks: ['nodejs'] }));
     const content = readFileSync(join(outputDir, '.devcontainer', 'Dockerfile'), 'utf-8');
     assert.ok(content.startsWith('FROM node:22'));
-    assert.ok(!content.includes('nodesource'));
   });
 
-  it('python stack uses python base image and installs Node.js', () => {
+  it('python stack uses python base image', () => {
     generate(opts({ stacks: ['python'] }));
     const content = readFileSync(join(outputDir, '.devcontainer', 'Dockerfile'), 'utf-8');
     assert.ok(content.startsWith('FROM python:3.12'));
-    assert.ok(content.includes('nodesource'));
   });
 
-  it('dotnet stack uses dotnet base image and installs Node.js', () => {
+  it('dotnet stack uses dotnet base image', () => {
     generate(opts({ stacks: ['dotnet'] }));
     const content = readFileSync(join(outputDir, '.devcontainer', 'Dockerfile'), 'utf-8');
     assert.ok(content.startsWith('FROM mcr.microsoft.com/dotnet/sdk:'));
-    assert.ok(content.includes('nodesource'));
   });
 
   it('devcontainer.json has base extensions for any stack', () => {
@@ -664,8 +661,6 @@ describe('generate', () => {
     generate(opts({ stacks: ['python', 'nodejs'] }));
     const content = readFileSync(join(outputDir, '.devcontainer', 'Dockerfile'), 'utf-8');
     assert.ok(content.startsWith('FROM python:3.12'));
-    // Node.js installed via nodesource (because primary is python)
-    assert.ok(content.includes('nodesource'));
   });
 });
 

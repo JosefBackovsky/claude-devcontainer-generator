@@ -27,7 +27,7 @@ services:
     ports:
       - "<%= sshPort %>:22"
     command: >
-      bash -c "export -p > /home/node/.container-env && sudo /usr/sbin/sshd && claude update --yes 2>/dev/null; tmux new-session -d -s claude 'claude --dangerously-skip-permissions' && sleep infinity"
+      bash -c "export -p > /home/node/.container-env && sudo /usr/sbin/sshd && tmux new-session -d -s claude 'claude --dangerously-skip-permissions' && sleep infinity"
     restart: always
 <%_ if (!fullInternet) { _%>
     cap_add:

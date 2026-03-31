@@ -16,13 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 <%_ } _%>
     && rm -rf /var/lib/apt/lists/*
 
-<%_ if (stack.name !== 'nodejs') { _%>
-# Install Node.js (needed for Claude Code)
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
-
-<%_ } _%>
 # Create non-root user if not exists (Node.js images have 'node', others don't)
 RUN id -u node 2>/dev/null || (groupadd --gid 1000 node \
     && useradd --uid 1000 --gid node --shell /bin/zsh --create-home node)
