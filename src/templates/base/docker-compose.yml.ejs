@@ -24,10 +24,11 @@ services:
       - ../../<%= name %>-devcontainer/.project-claude:/workspace/.claude:cached
 <%_ } _%>
       - <%= name %>-commandhistory:/commandhistory
+      - <%= name %>-persistent:/home/node/.persistent
     ports:
       - "<%= sshPort %>:22"
     command: >
-      bash -c "export -p > /home/node/.container-env && sudo /usr/sbin/sshd && tmux new-session -d -s claude 'claude --dangerously-skip-permissions' && sleep infinity"
+      bash -c "export PATH=/home/node/.local/bin:$PATH && export -p > /home/node/.container-env && sudo /usr/sbin/sshd && tmux new-session -d -s claude 'claude --dangerously-skip-permissions' && sleep infinity"
     restart: always
 <%_ if (!fullInternet) { _%>
     cap_add:
@@ -99,6 +100,7 @@ volumes:
     external: true
   <%= name %>-vscode-server:
   <%= name %>-commandhistory:
+  <%= name %>-persistent:
 <%_ if (!fullInternet) { _%>
   firewall-data:
 <%_ } _%>

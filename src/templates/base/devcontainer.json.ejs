@@ -43,6 +43,9 @@ for (const [svcName, svc] of Object.entries(services)) {
       "extensions": <%- JSON.stringify(extensions) %>,
       "settings": {
         "claude-code.enableAutoSkipPermissions": true,
+<%_ if (stack.name === 'python') { _%>
+        "python.defaultInterpreterPath": "/usr/local/bin/python3",
+<%_ } _%>
         "remote.autoForwardPorts": false,
         "remote.restoreForwardedPorts": false,
         "git.terminalAuthentication": false,
