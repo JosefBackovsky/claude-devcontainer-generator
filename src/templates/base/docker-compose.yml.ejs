@@ -111,7 +111,7 @@ services:
     ports:
       - "<%= ungitPort %>:8448"
     command: >
-      bash -c "apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/* && npm install -g ungit && echo '{\"port\": 8448, \"ungitBindIp\": \"0.0.0.0\", \"autoFetch\": false, \"defaultRepositories\": [<%- repos ? repos.map(r => '\"/workspace/' + r.name + '\"').join(', ') : '\"/workspace\"' %>]}' > /home/node/.ungitrc && git config --global credential.helper 'store --file /home/node/.ungit-config/.git-credentials' && su node -c ungit"
+      bash -c "apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/* && npm install -g ungit && echo '{\"port\": 8448, \"ungitBindIp\": \"0.0.0.0\", \"autoFetch\": false, \"defaultRepositories\": [<%- repos ? repos.map(r => '\"/workspace/' + r.name + '\"').join(', ') : '\"/workspace\"' %>]}' > /home/node/.ungitrc && chown node:node /home/node/.ungitrc && su node -c \"git config --global credential.helper 'store --file /home/node/.ungit-config/.git-credentials' && ungit\""
     restart: always
 <%_ } _%>
 
