@@ -75,13 +75,13 @@ function renderTemplate(templateName, context) {
  * Generuje kompletní devcontainer repo do output adresáře.
  */
 export function generate(options) {
-  const { name, repos, multiRepo = false, stacks: stackNames = ['nodejs'], services: selectedServices = [], fullInternet = false, includeCompose = false, localClaude = false, sshPort = 2222, firewallPort = 8180, gitName, gitEmail, output } = options;
+  const { name, repos, multiRepo = false, stacks: stackNames = ['nodejs'], services: selectedServices = [], fullInternet = false, includeCompose = false, localClaude = false, ungit = true, sshPort = 2222, firewallPort = 8180, ungitPort = 8004, gitName, gitEmail, output } = options;
 
   const stack = loadAndMergeStacks(stackNames);
   const services = loadServices(selectedServices);
   const serviceVolumes = extractServiceVolumes(services);
 
-  const context = { name, repos, multiRepo, stack, services, serviceVolumes, fullInternet, includeCompose, localClaude, sshPort, firewallPort, gitName, gitEmail };
+  const context = { name, repos, multiRepo, stack, services, serviceVolumes, fullInternet, includeCompose, localClaude, ungit, sshPort, firewallPort, ungitPort, gitName, gitEmail };
 
   const devcontainerDir = join(output, '.devcontainer');
   mkdirSync(devcontainerDir, { recursive: true });
@@ -123,7 +123,7 @@ export function generate(options) {
 /**
  * Vypíše instrukce po vygenerování.
  */
-export function printInstructions(name, output, { localClaude = false, sshPort = 2222, repos = [], multiRepo = false, includeCompose = false } = {}) {
+export function printInstructions(name, output, { localClaude = false, sshPort = 2222, ungitPort = 8004, ungit = true, repos = [], multiRepo = false, includeCompose = false } = {}) {
   let claudeInfo = '';
   if (localClaude) {
     claudeInfo = `
@@ -173,8 +173,13 @@ ${composePaths}
    Ctrl+B, pak D
 
 5. Nastavení git credentials (při prvním použití):
-   echo "https://<github-user>:<PAT>@github.com" > ~/.git-credentials
-   (nebo nechte git se zeptat při prvním push/pull — uloží automaticky)
+   echo "https://<user>:<read-only-PAT>@<git-host>" > ~/.persistent/.git-credentials
+   (Claude má pouze read-only přístup — nemůže pushovat)${ungit ? `
+
+${localClaude ? '7' : '6'}. Git push přes Ungit web GUI:
+   Otevřete http://<hostname>:${ungitPort} v prohlížeči
+   Při prvním push zadejte username + write PAT jako heslo
+   Credentials se uloží automaticky pro další použití` : ''}
 ${claudeInfo}${multiRepoInfo}${includeComposeWarning}
 ${jetbrainsStep}. JetBrains IDE (PyCharm, IntelliJ, ...) — přes Gateway:
    - Kontejner exposuje SSH na portu ${sshPort} (mapovaný z kontejneru :22)

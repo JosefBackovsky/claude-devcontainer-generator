@@ -48,7 +48,7 @@ for (const [svcName, svc] of Object.entries(services)) {
 <%_ } _%>
         "remote.autoForwardPorts": false,
         "remote.restoreForwardedPorts": false,
-        "git.terminalAuthentication": true,
+        "git.terminalAuthentication": false,
         "dev.containers.gitCredentialHelperConfigLocation": "none"
       }
     }
@@ -68,7 +68,13 @@ for (const [svcName, svc] of Object.entries(services)) {
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
   },
 
-  "remoteEnv": {},
+  "remoteEnv": {
+    "VSCODE_GIT_ASKPASS_MAIN": "",
+    "VSCODE_GIT_ASKPASS_NODE": "",
+    "VSCODE_GIT_ASKPASS_EXTRA_ARGS": "",
+    "VSCODE_GIT_IPC_HANDLE": "",
+    "GIT_ASKPASS": ""
+  },
 
   "initializeCommand": ".devcontainer/init.sh"<% if (!fullInternet) { %>,
   "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",

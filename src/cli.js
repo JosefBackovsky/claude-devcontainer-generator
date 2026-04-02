@@ -14,6 +14,7 @@ program
   .option('--stack <stack>', 'SDK/runtime stack (repeatable, first = base image, default: nodejs)', (val, prev) => (prev || []).concat([val]))
   .option('--services <services>', 'Comma-separated services: postgres, mongo, redis, azurite')
   .option('--full-internet', 'Allow full internet access (skip firewall)')
+  .option('--no-ungit', 'Disable Ungit web git GUI (enabled by default for git push isolation)')
   .option('--include-compose', 'Include project docker-compose.yml via compose include')
   .option('--local-claude', 'Mount .claude from devcontainer repo instead of Docker volume')
   .option('--ssh-port <port>', 'SSH port for JetBrains IDE access (default: 2222)')
@@ -55,18 +56,21 @@ program
 
       const services = (options.services || '').split(',').map(s => s.trim()).filter(Boolean);
 
-      let sshPort, firewallPort;
+      let sshPort, firewallPort, ungitPort;
       if (options.portPrefix) {
         sshPort = parseInt(options.portPrefix + '22', 10);
         firewallPort = parseInt(options.portPrefix + '80', 10);
+        ungitPort = parseInt(options.portPrefix + '04', 10);
       } else {
         sshPort = parseInt(options.sshPort || '2222', 10);
         firewallPort = 8180;
+        ungitPort = 8004;
       }
 
       const stacks = (options.stack && options.stack.length > 0) ? options.stack : ['nodejs'];
-      generate({ ...options, repos, multiRepo, stacks, services, sshPort, firewallPort });
-      printInstructions(options.name, options.output, { localClaude: options.localClaude, sshPort, repos, multiRepo, includeCompose: options.includeCompose });
+      const ungit = options.ungit !== false;
+      generate({ ...options, repos, multiRepo, stacks, services, sshPort, firewallPort, ungitPort, ungit });
+      printInstructions(options.name, options.output, { localClaude: options.localClaude, sshPort, ungitPort, ungit, repos, multiRepo, includeCompose: options.includeCompose });
     } catch (err) {
       console.error(`Error: ${err.message}`);
       process.exit(1);

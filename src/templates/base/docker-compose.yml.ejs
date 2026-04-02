@@ -94,6 +94,26 @@ services:
 <%_ } _%>
 <%_ } _%>
 <%_ } _%>
+<%_ if (ungit) { _%>
+
+  ungit:
+    image: node:22-slim
+    working_dir: /workspace
+    volumes:
+<%_ if (multiRepo) { _%>
+<%_ for (const r of repos) { _%>
+      - ../../<%= name %>/<%= r.name %>:/workspace/<%= r.name %>:cached
+<%_ } _%>
+<%_ } else { _%>
+      - ../../<%= name %>:/workspace:cached
+<%_ } _%>
+      - <%= name %>-ungit-data:/home/node/.ungit-config
+    ports:
+      - "<%= ungitPort %>:8448"
+    command: >
+      bash -c "apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/* && npm install -g ungit && echo '{\"port\": 8448, \"ungitBindIp\": \"0.0.0.0\", \"autoFetch\": false, \"defaultRepositories\": [<%- repos ? repos.map(r => '\"/workspace/' + r.name + '\"').join(', ') : '\"/workspace\"' %>]}' > /home/node/.ungitrc && git config --global credential.helper 'store --file /home/node/.ungit-config/.git-credentials' && su node -c ungit"
+    restart: always
+<%_ } _%>
 
 volumes:
   claude-shared:
@@ -101,6 +121,9 @@ volumes:
   <%= name %>-vscode-server:
   <%= name %>-commandhistory:
   <%= name %>-persistent:
+<%_ if (ungit) { _%>
+  <%= name %>-ungit-data:
+<%_ } _%>
 <%_ if (!fullInternet) { _%>
   firewall-data:
 <%_ } _%>
