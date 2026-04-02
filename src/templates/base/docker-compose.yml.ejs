@@ -28,7 +28,7 @@ services:
     ports:
       - "<%= sshPort %>:22"
     command: >
-      bash -c "export PATH=/home/node/.local/bin:$PATH && export -p > /home/node/.container-env && sudo /usr/sbin/sshd && tmux new-session -d -s claude 'claude --dangerously-skip-permissions' && sleep infinity"
+      bash -c "([ -n \"$$GIT_CREDENTIALS_READONLY\" ] && echo \"$$GIT_CREDENTIALS_READONLY\" > /home/node/.persistent/.git-credentials || true) && export PATH=/home/node/.local/bin:$PATH && export -p > /home/node/.container-env && sudo /usr/sbin/sshd && tmux new-session -d -s claude 'claude --dangerously-skip-permissions' && sleep infinity"
     restart: always
 <%_ if (!fullInternet) { _%>
     cap_add:
@@ -40,6 +40,7 @@ services:
         required: false
     environment:
       - CLAUDE_CONFIG_DIR=/home/node/.claude
+      - GIT_CREDENTIALS_READONLY=${GIT_CREDENTIALS_READONLY:-}
 <%_ if (!fullInternet) { _%>
       - http_proxy=http://firewall:3128
       - https_proxy=http://firewall:3128
@@ -110,8 +111,10 @@ services:
       - <%= name %>-ungit-data:/home/node/.ungit-config
     ports:
       - "<%= ungitPort %>:8448"
+    secrets:
+      - git-credentials-write
     command: >
-      bash -c "apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/* && npm install -g ungit && echo '{\"port\": 8448, \"ungitBindIp\": \"0.0.0.0\", \"autoFetch\": false, \"defaultRepositories\": [<%- repos ? repos.map(r => '\"/workspace/' + r.name + '\"').join(', ') : '\"/workspace\"' %>]}' > /home/node/.ungitrc && chown node:node /home/node/.ungitrc && su node -c \"git config --global credential.helper 'store --file /home/node/.ungit-config/.git-credentials' && ungit\""
+      bash -c "apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/* && npm install -g ungit && chown node:node /home/node/.ungit-config && echo '{\"port\": 8448, \"ungitBindIp\": \"0.0.0.0\", \"autoFetch\": false, \"defaultRepositories\": [<%- repos ? repos.map(r => '\"/workspace/' + r.name + '\"').join(', ') : '\"/workspace\"' %>]}' > /home/node/.ungitrc && chown node:node /home/node/.ungitrc && if [ ! -s /run/secrets/git-credentials-write ]; then echo 'ERROR: git-credentials-write secret is empty' >&2; exit 1; fi && cp /run/secrets/git-credentials-write /home/node/.ungit-config/.git-credentials && chown node:node /home/node/.ungit-config/.git-credentials && su node -c \"git config --global credential.helper 'store --file /home/node/.ungit-config/.git-credentials' && ungit\""
     restart: always
 <%_ } _%>
 
@@ -129,4 +132,10 @@ volumes:
 <%_ } _%>
 <%_ for (const volName of Object.keys(serviceVolumes)) { _%>
   <%= volName %>:
+<%_ } _%>
+<%_ if (ungit) { _%>
+
+secrets:
+  git-credentials-write:
+    file: ${HOME}/.secrets/<%= name %>/git-credentials-write
 <%_ } _%>

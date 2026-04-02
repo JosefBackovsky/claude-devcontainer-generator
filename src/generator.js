@@ -116,7 +116,7 @@ export function generate(options) {
   }
   const envExamplePath = join(devcontainerDir, '.env.example');
   if (!existsSync(envExamplePath)) {
-    writeFileSync(envExamplePath, '# Environment variables for this devcontainer\n# Copy to .env and fill in values:\n#   cp .devcontainer/.env.example .devcontainer/.env\n');
+    writeFileSync(envExamplePath, '# Environment variables for this devcontainer\n# Copy to .env and fill in values:\n#   cp .devcontainer/.env.example .devcontainer/.env\n\n# Git credentials for Claude (read-only) — full credential line\n# GIT_CREDENTIALS_READONLY=https://<user>:<read-only-PAT>@<git-host>\n');
   }
 }
 
@@ -172,14 +172,19 @@ ${composePaths}
 4. Odpojení (Claude dál pracuje):
    Ctrl+B, pak D
 
-5. Nastavení git credentials (při prvním použití):
-   echo "https://<user>:<read-only-PAT>@<git-host>" > ~/.persistent/.git-credentials
-   (Claude má pouze read-only přístup — nemůže pushovat)${ungit ? `
+5. Nastavení git credentials pro Claude (read-only):
+   Na serveru v .devcontainer/.env přidejte:
+   GIT_CREDENTIALS_READONLY=https://<user>:<read-only-PAT>@<git-host>
+   Pak: docker compose up -d --force-recreate devcontainer
+   (Credentials se automaticky seedují při každém startu kontejneru)${ungit ? `
 
-${localClaude ? '7' : '6'}. Git push přes Ungit web GUI:
-   Otevřete http://<hostname>:${ungitPort} v prohlížeči
-   Při prvním push zadejte username + write PAT jako heslo
-   Credentials se uloží automaticky pro další použití` : ''}
+${localClaude ? '7' : '6'}. Git push přes Ungit (write credentials):
+   Vytvořte secret soubor na serveru:
+   mkdir -p ~/.secrets/${name} && chmod 700 ~/.secrets/${name}
+   echo "https://<user>:<write-PAT>@<git-host>" > ~/.secrets/${name}/git-credentials-write
+   chmod 600 ~/.secrets/${name}/git-credentials-write
+   Pak: docker compose up -d --force-recreate ungit
+   Ungit web GUI: http://<hostname>:${ungitPort}` : ''}
 ${claudeInfo}${multiRepoInfo}${includeComposeWarning}
 ${jetbrainsStep}. JetBrains IDE (PyCharm, IntelliJ, ...) — přes Gateway:
    - Kontejner exposuje SSH na portu ${sshPort} (mapovaný z kontejneru :22)

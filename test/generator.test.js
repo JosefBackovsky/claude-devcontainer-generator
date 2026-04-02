@@ -410,7 +410,7 @@ describe('generate', () => {
   it('Dockerfile sets git credential.helper to store', () => {
     generate(opts());
     const content = readFileSync(join(outputDir, '.devcontainer', 'Dockerfile'), 'utf-8');
-    assert.ok(content.includes("credential.helper 'store --file /home/node/.git-credentials'"));
+    assert.ok(content.includes("credential.helper 'store --file /home/node/.persistent/.git-credentials'"));
   });
 
   it('git proxy config in Dockerfile when not fullInternet', () => {
